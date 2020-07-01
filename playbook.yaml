@@ -1,0 +1,75 @@
+- name: FIO-S3 benchmarking
+  hosts: irp210
+  vars:
+    # S3 Target to test: endpoint, bucket, object size, and compressibility.
+    # Update these variables for your tests.
+    s3endpoint: "10.62.64.200"
+    s3bucket: "benchmarking"
+    object_size: "4m"
+    compress_percentage: 40
+  vars_files:
+    # S3 access/secret keys stored in a separate file (not in version control).
+    # This file should include variables "s3_access_key" and "s3_secret_key"
+    - s3credentials.yaml
+  tasks:
+    #- name: Validate docker module for python installed.
+    #pip:
+    #  name: docker
+  - name: Pull docker image
+    docker_image:
+      name: "joshuarobinson/fio-s3"
+      state: present
+      source: pull
+  - name: Push fio config file
+    copy:
+      src: fb.fio
+      dest: /tmp/fb.fio
+  - name: fio write data to S3 in parallel
+    docker_container:
+      name: fio-s3-write
+      image: joshuarobinson/fio-s3
+      command: "/fio/fio /tmp/fb.fio --section=write_s3"
+      state: started
+      detach: no
+      auto_remove: no
+      volumes:
+        - /tmp:/tmp
+      env:
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        S3ENDPOINT={{ s3endpoint }}
+        BUCKET={{ s3bucket }}
+        OBJSIZE={{ object_size }}
+        COMPRESS_PCT={{ compress_percentage }}
+  - name: fio read all written data on S3
+    docker_container:
+      name: fio-s3-read
+      image: joshuarobinson/fio-s3
+      command: "/fio/fio /tmp/fb.fio --section=read_s3"
+      state: started
+      detach: no
+      auto_remove: yes
+      volumes:
+        - /tmp:/tmp
+      env:
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        S3ENDPOINT={{ s3endpoint }}
+        BUCKET={{ s3bucket }}
+        OBJSIZE={{ object_size }}
+  - name: fio cleanup data on S3
+    docker_container:
+      name: fio-s3-clean
+      image: joshuarobinson/fio-s3
+      command: "/fio/fio /tmp/fb.fio --section=trim_s3"
+      state: started
+      detach: no
+      auto_remove: yes
+      volumes:
+        - /tmp:/tmp
+      env:
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        S3ENDPOINT={{ s3endpoint }}
+        BUCKET={{ s3bucket }}
+        OBJSIZE={{ object_size }}
