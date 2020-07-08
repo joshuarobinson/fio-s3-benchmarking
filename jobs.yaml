@@ -1,0 +1,139 @@
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: fio-s3-env-config
+data:
+  S3ENDPOINT: "10.62.64.200"
+  BUCKET: "benchmarking"
+  OBJSIZE: "50k"
+  COMPRESS_PCT: "40"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-s3-writes
+spec:
+  parallelism: 0
+  completions: 20
+  template:
+    spec:
+      containers:
+      - name: fio-s3
+        image: joshuarobinson/fio-s3
+        command: ["/fio/fio"]
+        args: ["/configs/fb.fio", "--section=write_s3"]
+        env:
+        - name: AWS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: my-s3-keys
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: my-s3-keys
+              key: secret-key
+        envFrom:
+        - configMapRef:
+            name: fio-s3-env-config
+        volumeMounts:
+        - name: fio-s3-config-vol
+          mountPath: /configs
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "1000m"
+      restartPolicy: Always
+      volumes:
+      - name: fio-s3-config-vol
+        configMap:
+          name: fio-s3-config
+      restartPolicy: Never
+  backoffLimit: 4
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-s3-reads
+spec:
+  parallelism: 0
+  completions: 20
+  template:
+    spec:
+      containers:
+      - name: fio-s3
+        image: joshuarobinson/fio-s3
+        command: ["/fio/fio"]
+        args: ["/configs/fb.fio", "--section=read_s3"]
+        env:
+        - name: AWS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: irp210-s3-keys
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: irp210-s3-keys
+              key: secret-key
+        envFrom:
+        - configMapRef:
+            name: fio-s3-env-config
+        volumeMounts:
+        - name: fio-s3-config-vol
+          mountPath: /configs
+        resources:
+          requests:
+            cpu: "1000m"
+        imagePullPolicy: Always
+      restartPolicy: Always
+      volumes:
+      - name: fio-s3-config-vol
+        configMap:
+          name: fio-s3-config
+      restartPolicy: Never
+  backoffLimit: 4
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-s3-trims
+spec:
+  parallelism: 0
+  completions: 20
+  template:
+    spec:
+      containers:
+      - name: fio-s3
+        image: joshuarobinson/fio-s3
+        command: ["/fio/fio"]
+        args: ["/configs/fb.fio", "--section=trim_s3"]
+        env:
+        - name: AWS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: irp210-s3-keys
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: irp210-s3-keys
+              key: secret-key
+        envFrom:
+        - configMapRef:
+            name: fio-s3-env-config
+        volumeMounts:
+        - name: fio-s3-config-vol
+          mountPath: /configs
+        resources:
+          requests:
+            cpu: "1000m"
+        imagePullPolicy: Always
+      restartPolicy: Always
+      volumes:
+      - name: fio-s3-config-vol
+        configMap:
+          name: fio-s3-config
+      restartPolicy: Never
+  backoffLimit: 4

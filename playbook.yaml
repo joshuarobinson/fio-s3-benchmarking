@@ -1,11 +1,11 @@
 - name: FIO-S3 benchmarking
-  hosts: irp210
+  hosts: all
   vars:
     # S3 Target to test: endpoint, bucket, object size, and compressibility.
     # Update these variables for your tests.
     s3endpoint: "10.62.64.200"
     s3bucket: "benchmarking"
-    object_size: "4m"
+    object_size: "128k"
     compress_percentage: 40
   vars_files:
     # S3 access/secret keys stored in a separate file (not in version control).
@@ -31,7 +31,7 @@
       command: "/fio/fio /tmp/fb.fio --section=write_s3"
       state: started
       detach: no
-      auto_remove: no
+      auto_remove: yes
       volumes:
         - /tmp:/tmp
       env:
