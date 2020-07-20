@@ -1,20 +1,54 @@
 - name: FIO-S3 benchmarking
   hosts: all
+  collections:
+  - purestorage.flashblade
   vars:
     # S3 Target to test: endpoint, bucket, object size, and compressibility.
     # Update these variables for your tests.
     s3endpoint: "10.62.64.200"
-    s3bucket: "benchmarking"
     object_size: "128k"
     compress_percentage: 40
+    # Defaults for S3 account/user/bucket, no change necessary.
+    s3bucket: "fiobench"
+    s3account: "default"
+    s3user: "fio"
   vars_files:
-    # S3 access/secret keys stored in a separate file (not in version control).
-    # This file should include variables "s3_access_key" and "s3_secret_key"
-    - s3credentials.yaml
+    # FlashBlade login inforation (with token) stored in a separate file (not in version control).
+    # This file should include variables: FB_MGMTVIP, FB_DATAVIP, and FB_TOKEN
+    - fbcredentials.yaml
   tasks:
-    #- name: Validate docker module for python installed.
-    #pip:
-    #  name: docker
+  - name: Ensure python modules installed
+    pip:
+      name: "{{ item }}"
+    loop:
+      - docker
+      - purity_fb
+  - name: Create s3 account
+    delegate_to: localhost
+    run_once: true
+    purefb_s3acc:
+      name: "{{ s3account }}"
+      fb_url: "{{ FB_MGMTVIP }}"
+      api_token: "{{ FB_TOKEN }}"
+  - name: Create s3 user
+    delegate_to: localhost
+    run_once: true
+    purefb_s3user:
+      name:  "{{ s3user }}"
+      account: "{{ s3account }}"
+      fb_url: "{{ FB_MGMTVIP }}"
+      api_token: "{{ FB_TOKEN }}"
+    register: user_info
+  - debug:
+      msg: "{{ user_info.s3user_info }}"
+  - name: Create Bucket
+    delegate_to: localhost
+    run_once: true
+    purefb_bucket:
+      name: "{{ s3bucket }}"
+      account: "{{ s3account }}"
+      fb_url: "{{ FB_MGMTVIP }}"
+      api_token: "{{ FB_TOKEN }}"
   - name: Pull docker image
     docker_image:
       name: "joshuarobinson/fio-s3"
@@ -35,8 +69,8 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ s3_access_key }}
-        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
+        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
@@ -52,8 +86,8 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ s3_access_key }}
-        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
+        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
@@ -68,8 +102,27 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ s3_access_key }}
-        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
+        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
+        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
+  - name: Eradicate Bucket
+    delegate_to: localhost
+    run_once: true
+    purefb_bucket:
+      name: "{{ s3bucket }}"
+      account: "{{ s3account }}"
+      fb_url: "{{ FB_MGMTVIP }}"
+      api_token: "{{ FB_TOKEN }}"
+      eradicate: yes
+      state: absent
+  - name: Delete s3 user
+    delegate_to: localhost
+    run_once: true
+    purefb_s3user:
+      name:  "{{ s3user }}"
+      account: "{{ s3account }}"
+      fb_url: "{{ FB_MGMTVIP }}"
+      api_token: "{{ FB_TOKEN }}"
+      state: absent
