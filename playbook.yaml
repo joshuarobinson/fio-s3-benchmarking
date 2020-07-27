@@ -2,11 +2,16 @@
   hosts: all
   collections:
   - purestorage.flashblade
+  vars_prompt:
+  - name: "input_source"
+    prompt: "Would you like to test against a FlashBlade or provide your own connection information. Valid options: [flashblade|custom]"
+    default: "flashblade"
+    private: no
   vars:
     # S3 Target to test: endpoint, bucket, object size, and compressibility.
     # Update these variables for your tests.
     s3endpoint: "10.62.64.200"
-    object_size: "128k"
+    object_size: "18m"
     compress_percentage: 40
     # Defaults for S3 account/user/bucket, no change necessary.
     s3bucket: "fiobench"
@@ -15,7 +20,7 @@
   vars_files:
     # FlashBlade login inforation (with token) stored in a separate file (not in version control).
     # This file should include variables: FB_MGMTVIP, FB_DATAVIP, and FB_TOKEN
-    - fbcredentials.yaml
+    - "{{ input_source }}.yaml"
   tasks:
   - name: Ensure python modules installed
     pip:
@@ -24,6 +29,7 @@
       - docker
       - purity_fb
   - name: Create s3 account
+    when: input_source == "flashblade"
     delegate_to: localhost
     run_once: true
     purefb_s3acc:
@@ -31,6 +37,7 @@
       fb_url: "{{ FB_MGMTVIP }}"
       api_token: "{{ FB_TOKEN }}"
   - name: Create s3 user
+    when: input_source == "flashblade"
     delegate_to: localhost
     run_once: true
     purefb_s3user:
@@ -39,9 +46,13 @@
       fb_url: "{{ FB_MGMTVIP }}"
       api_token: "{{ FB_TOKEN }}"
     register: user_info
-  - debug:
-      msg: "{{ user_info.s3user_info }}"
+  - name: Set Access keys
+    when: input_source == "flashblade"
+    set_fact:
+      s3_access_key: "{{ user_info.s3user_info.fb_s3user.access_id }}"
+      s3_secret_key: "{{ user_info.s3user_info.fb_s3user.access_key }}"
   - name: Create Bucket
+    when: input_source == "flashblade"
     delegate_to: localhost
     run_once: true
     purefb_bucket:
@@ -69,8 +80,8 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
-        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
@@ -86,8 +97,8 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
-        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
@@ -102,12 +113,13 @@
       volumes:
         - /tmp:/tmp
       env:
-        AWS_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_id }}
-        AWS_SECRET_ACCESS_KEY={{ user_info.s3user_info.fb_s3user.access_key }}
+        AWS_ACCESS_KEY={{ s3_access_key }}
+        AWS_SECRET_ACCESS_KEY={{ s3_secret_key }}
         S3ENDPOINT={{ s3endpoint }}
         BUCKET={{ s3bucket }}
         OBJSIZE={{ object_size }}
   - name: Eradicate Bucket
+    when: input_source == "flashblade"
     delegate_to: localhost
     run_once: true
     purefb_bucket:
@@ -118,6 +130,7 @@
       eradicate: yes
       state: absent
   - name: Delete s3 user
+    when: input_source == "flashblade"
     delegate_to: localhost
     run_once: true
     purefb_s3user:
