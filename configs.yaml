@@ -33,7 +33,7 @@ data:
     [read_s3]
     percentage_random=0
     randrepeat=0
-    runtime=300s
+    runtime=600s
     rw=read
     time_based
     zero_buffers
